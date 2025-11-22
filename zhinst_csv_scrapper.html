@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zhinst Data Extractor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .drop-zone { transition: all 0.3s ease; }
+        .drop-zone.dragover { border-color: #3b82f6; background-color: #eff6ff; }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 shadow-sm z-20 relative">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div>
+                    <h1 class="text-xl font-bold text-slate-800">ZhInst Data Scrapper<span class="text-xs font-normal text-white bg-blue-600 px-2 py-0.5 rounded-full ml-2">XY Mode</span></h1>
+                    <p class="text-xs text-slate-400">NitaD, Univ Paris-Saclay, 21 nov 2025</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow p-4 md:p-6 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- LEFT: Configuration Panel -->
+        <div class="lg:col-span-4 space-y-4">
+            
+            <!-- 1. Upload -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">1. Load File</h2>
+                
+                <div id="dropZone" class="drop-zone border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 relative group transition-all">
+                    <input type="file" id="fileInput" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" accept=".csv,.txt,.dat,.log">
+                    <div class="space-y-3 pointer-events-none">
+                        <i class="fa-solid fa-file-csv text-4xl text-slate-300 group-hover:text-blue-500 transition-colors"></i>
+                        <div>
+                            <p class="text-sm text-slate-600 font-medium">Drop your file here</p>
+                            <p class="text-xs text-slate-400 mt-1">Scans for unique labels</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="fileInfo" class="hidden mt-3 bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center justify-between">
+                    <div class="flex items-center gap-2 overflow-hidden">
+                        <i class="fa-solid fa-file-lines text-blue-500"></i>
+                        <span id="fileName" class="text-sm font-medium text-blue-900 truncate">filename.csv</span>
+                    </div>
+                    <button id="resetBtn" class="text-blue-400 hover:text-red-500 transition-colors px-2"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            </div>
+
+            <!-- 2. Label Selector -->
+            <div id="structurePanel" class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 opacity-50 pointer-events-none transition-all">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">2. Select Variables</h2>
+
+                <div class="mb-4">
+                    <label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Separator</label>
+                    <select id="delimiterSelect" class="w-full bg-slate-50 border border-slate-200 rounded text-sm p-2 outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="auto">Auto-Detect</option>
+                        <option value=";">Semicolon (;)</option>
+                        <option value=",">Comma (,)</option>
+                        <option value="\t">Tab (\t)</option>
+                    </select>
+                </div>
+
+                <div class="space-y-3 border-t border-slate-100 pt-3">
+                    
+                    <!-- X Selector -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">X (Horizontal Axis)</label>
+                        <select id="selFreq" class="w-full text-sm bg-white border border-slate-200 rounded p-2 outline-none focus:border-slate-500 font-mono text-slate-600">
+                            <option value="">Scanning...</option>
+                        </select>
+                    </div>
+
+                    <!-- Y1 Selector -->
+                    <div>
+                        <label class="block text-xs font-bold text-blue-600 mb-1">Y1 (Left Axis)</label>
+                        <select id="selR" class="w-full text-sm bg-white border border-slate-200 rounded p-2 outline-none focus:border-blue-500 font-mono text-slate-600">
+                            <option value="">Scanning...</option>
+                        </select>
+                    </div>
+
+                    <!-- Y2 Selector -->
+                    <div>
+                        <label class="block text-xs font-bold text-red-600 mb-1">Y2 (Right Axis)</label>
+                        <select id="selP" class="w-full text-sm bg-white border border-slate-200 rounded p-2 outline-none focus:border-red-500 font-mono text-slate-600">
+                            <option value="">Scanning...</option>
+                        </select>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- 3. Download -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                 <button id="downloadBtn" disabled class="w-full bg-slate-100 text-slate-400 font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 cursor-not-allowed">
+                    <i class="fa-solid fa-download"></i>
+                    <span>Export to TSV</span>
+                </button>
+                <div class="mt-2 flex justify-between px-1">
+                    <span id="statusMsg" class="text-xs text-slate-400">Waiting for data...</span>
+                    <label class="text-[10px] text-slate-400 flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" id="chkComma" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500"> Use Comma (CSV)
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: Visualization Panel -->
+        <div class="lg:col-span-8 flex flex-col h-full min-h-[600px]">
+            <div class="bg-white flex-grow rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden relative">
+                
+                <!-- Top Bar (Tabs) -->
+                <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <div class="flex space-x-2">
+                        <button id="tabPlot" class="px-4 py-2 text-sm font-bold text-blue-600 border-b-2 border-blue-600 transition-colors">
+                            <i class="fa-solid fa-chart-area mr-1"></i> Plot
+                        </button>
+                        <button id="tabTable" class="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">
+                            <i class="fa-solid fa-table mr-1"></i> Table
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-3">
+                         <label class="text-xs flex items-center gap-1 text-slate-600 cursor-pointer">
+                             <input type="checkbox" id="chkLogScale" class="rounded text-blue-600 focus:ring-blue-500"> Log Scale (Y1)
+                         </label>
+                         <span id="rowCountBadge" class="text-xs font-mono bg-white px-2 py-1 rounded border border-slate-200 text-slate-500">0 pts</span>
+                    </div>
+                </div>
+
+                <!-- Plot View -->
+                <div id="viewPlot" class="flex-grow p-4 relative">
+                    <div class="absolute inset-0 flex items-center justify-center text-slate-300 pointer-events-none" id="plotPlaceholder">
+                        <div class="text-center">
+                            <i class="fa-solid fa-chart-line text-4xl mb-2 opacity-20"></i>
+                            <p class="text-sm">Plot will appear here</p>
+                        </div>
+                    </div>
+                    <canvas id="dataChart" class="w-full h-full"></canvas>
+                </div>
+
+                <!-- Table View (Hidden by default) -->
+                <div id="viewTable" class="flex-grow overflow-auto bg-white relative hidden">
+                    <table class="w-full text-sm text-left border-collapse">
+                        <thead class="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 shadow-sm z-10">
+                            <tr>
+                                <th id="thX" class="px-6 py-3 font-semibold border-b border-slate-200 w-1/3">X</th>
+                                <th id="thY1" class="px-6 py-3 font-semibold border-b border-slate-200 w-1/3 text-blue-600">Y1</th>
+                                <th id="thY2" class="px-6 py-3 font-semibold border-b border-slate-200 w-1/3 text-red-600">Y2</th>
+                            </tr>
+                        </thead>
+                        <tbody id="previewBody" class="divide-y divide-slate-100 text-slate-600 font-mono text-xs">
+                            <!-- Data Rows -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Log Panel at Bottom -->
+                <div id="logPanel" class="bg-slate-900 text-slate-300 font-mono text-xs p-2 h-24 overflow-y-auto border-t border-slate-200 shrink-0">
+                    <div class="opacity-50">> System ready. Upload file to scan.</div>
+                </div>
+
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // === State ===
+        let rawFile = null; 
+        let rawText = "";   
+        let parsedData = []; 
+        let chartInstance = null;
+        
+        // Stores all found labels and their row indices
+        let labelMap = new Map(); 
+        let labelColumnIndex = -1; 
+
+        // === Elements ===
+        const UI = {
+            dropZone: document.getElementById('dropZone'),
+            fileInput: document.getElementById('fileInput'),
+            fileInfo: document.getElementById('fileInfo'),
+            fileName: document.getElementById('fileName'),
+            resetBtn: document.getElementById('resetBtn'),
+            structurePanel: document.getElementById('structurePanel'),
+            delimiter: document.getElementById('delimiterSelect'),
+            selects: {
+                f: document.getElementById('selFreq'),
+                r: document.getElementById('selR'),
+                p: document.getElementById('selP')
+            },
+            log: document.getElementById('logPanel'),
+            preview: document.getElementById('previewBody'),
+            rowCount: document.getElementById('rowCountBadge'),
+            downloadBtn: document.getElementById('downloadBtn'),
+            statusMsg: document.getElementById('statusMsg'),
+            chkComma: document.getElementById('chkComma'),
+            
+            // Table headers
+            thX: document.getElementById('thX'),
+            thY1: document.getElementById('thY1'),
+            thY2: document.getElementById('thY2'),
+            
+            // Plot UI
+            tabPlot: document.getElementById('tabPlot'),
+            tabTable: document.getElementById('tabTable'),
+            viewPlot: document.getElementById('viewPlot'),
+            viewTable: document.getElementById('viewTable'),
+            chkLogScale: document.getElementById('chkLogScale'),
+            plotPlaceholder: document.getElementById('plotPlaceholder'),
+            ctx: document.getElementById('dataChart').getContext('2d')
+        };
+
+        // === Init ===
+        UI.dropZone.addEventListener('dragover', e => { e.preventDefault(); UI.dropZone.classList.add('border-blue-500', 'bg-blue-50'); });
+        UI.dropZone.addEventListener('dragleave', () => { UI.dropZone.classList.remove('border-blue-500', 'bg-blue-50'); });
+        UI.dropZone.addEventListener('drop', e => { e.preventDefault(); loadFile(e.dataTransfer.files[0]); });
+        UI.fileInput.addEventListener('change', e => loadFile(e.target.files[0]));
+        UI.resetBtn.addEventListener('click', reset);
+        UI.delimiter.addEventListener('change', () => scanLabels());
+        UI.downloadBtn.addEventListener('click', download);
+        
+        Object.values(UI.selects).forEach(sel => sel.addEventListener('change', extractData));
+
+        UI.chkLogScale.addEventListener('change', renderChart);
+        UI.tabPlot.addEventListener('click', () => switchTab('plot'));
+        UI.tabTable.addEventListener('click', () => switchTab('table'));
+
+        function switchTab(tab) {
+            if(tab === 'plot') {
+                UI.viewPlot.classList.remove('hidden');
+                UI.viewTable.classList.add('hidden');
+                UI.tabPlot.classList.add('text-blue-600', 'border-b-2', 'border-blue-600', 'font-bold');
+                UI.tabPlot.classList.remove('text-slate-500', 'font-medium');
+                UI.tabTable.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600', 'font-bold');
+                UI.tabTable.classList.add('text-slate-500', 'font-medium');
+            } else {
+                UI.viewPlot.classList.add('hidden');
+                UI.viewTable.classList.remove('hidden');
+                UI.tabTable.classList.add('text-blue-600', 'border-b-2', 'border-blue-600', 'font-bold');
+                UI.tabTable.classList.remove('text-slate-500', 'font-medium');
+                UI.tabPlot.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600', 'font-bold');
+                UI.tabPlot.classList.add('text-slate-500', 'font-medium');
+            }
+        }
+
+        function log(msg, type='info') {
+            const div = document.createElement('div');
+            div.textContent = `> ${msg}`;
+            if(type === 'err') div.className = "text-red-400 font-bold";
+            else if(type === 'success') div.className = "text-emerald-400";
+            UI.log.appendChild(div);
+            UI.log.scrollTop = UI.log.scrollHeight;
+        }
+
+        function reset() {
+            rawFile = null;
+            rawText = "";
+            parsedData = [];
+            labelMap.clear();
+            if(chartInstance) chartInstance.destroy();
+            UI.plotPlaceholder.classList.remove('hidden');
+            
+            UI.dropZone.classList.remove('hidden');
+            UI.fileInfo.classList.add('hidden');
+            UI.structurePanel.classList.add('opacity-50', 'pointer-events-none');
+            UI.log.innerHTML = '<div class="opacity-50">> System ready.</div>';
+            UI.preview.innerHTML = '';
+            UI.rowCount.textContent = "0 pts";
+            
+            // Reset selects
+            Object.values(UI.selects).forEach(sel => sel.innerHTML = '<option>Waiting...</option>');
+            disableDownload();
+        }
+
+        function loadFile(file) {
+            if(!file) return;
+            reset();
+            rawFile = file;
+            
+            UI.dropZone.classList.add('hidden');
+            UI.fileInfo.classList.remove('hidden');
+            UI.fileName.textContent = file.name;
+            UI.structurePanel.classList.remove('opacity-50', 'pointer-events-none');
+
+            const reader = new FileReader();
+            reader.onload = e => {
+                rawText = e.target.result;
+                log(`Loaded ${file.size} bytes. Detecting structure...`);
+                
+                if(UI.delimiter.value === 'auto') {
+                    const firstLine = rawText.split('\n')[0];
+                    const semis = (firstLine.match(/;/g)||[]).length;
+                    const tabs = (firstLine.match(/\t/g)||[]).length;
+                    if (semis >= tabs && semis > 0) UI.delimiter.value = ';';
+                    else if (tabs > semis) UI.delimiter.value = '\t';
+                    else UI.delimiter.value = ',';
+                }
+                scanLabels(); 
+            };
+            reader.readAsText(file);
+        }
+
+        function scanLabels() {
+            labelMap.clear();
+            const delim = UI.delimiter.value === 'auto' ? ';' : UI.delimiter.value;
+            const lines = rawText.split(/\r?\n/).filter(l => l.trim() !== '');
+            
+            log(`Scanning unique labels (delimiter: '${delim === '\t' ? 'TAB' : delim}')...`);
+
+            // 1. Detect Label Column
+            let bestCol = 3; 
+            for(let i=0; i<Math.min(lines.length, 20); i++) {
+                const cols = lines[i].split(delim).map(c=>c.trim().toLowerCase());
+                for(let c=0; c<cols.length; c++) {
+                    if(cols[c].includes('freq') || cols[c] === 'r' || cols[c].includes('phase')) {
+                        bestCol = c;
+                        break;
+                    }
+                }
+            }
+            labelColumnIndex = bestCol;
+
+            // 2. Collect Unique Labels AND Count Values
+            for(let i=0; i<lines.length; i++) {
+                const cols = lines[i].split(delim);
+                if(cols.length > labelColumnIndex) {
+                    const lbl = cols[labelColumnIndex].trim();
+                    // Simple validation
+                    if(lbl && isNaN(parseFloat(lbl))) {
+                        if(!labelMap.has(lbl)) {
+                            labelMap.set(lbl, { rows: [], sampleCount: 0 });
+                        }
+                        const entry = labelMap.get(lbl);
+                        entry.rows.push(i);
+                        
+                        // Count numeric values in this row (after the label)
+                        let valsInRow = 0;
+                        for(let j = labelColumnIndex + 1; j < cols.length; j++) {
+                            if(cols[j].trim() !== "" && !isNaN(parseFloat(cols[j].replace(',', '.')))) {
+                                valsInRow++;
+                            }
+                        }
+                        entry.sampleCount += valsInRow;
+                    }
+                }
+            }
+
+            const uniqueLabels = Array.from(labelMap.keys()).sort();
+            log(`Found ${uniqueLabels.length} unique labels.`);
+            
+            populateSelects(uniqueLabels);
+            smartSelect(uniqueLabels);
+        }
+
+        function populateSelects(labels) {
+            const createOpts = () => {
+                let html = '<option value="">-- Select Label --</option>';
+                labels.forEach(lbl => {
+                    const info = labelMap.get(lbl);
+                    html += `<option value="${lbl}">${lbl} (${info.sampleCount} values)</option>`;
+                });
+                return html;
+            };
+
+            const opts = createOpts();
+            UI.selects.f.innerHTML = opts;
+            UI.selects.r.innerHTML = opts;
+            UI.selects.p.innerHTML = opts;
+        }
+
+        function smartSelect(labels) {
+            const find = (keywords, bad) => labels.find(l => {
+                const low = l.toLowerCase();
+                const isBad = bad ? bad.some(b => low.includes(b)) : false;
+                return keywords.some(k => low.includes(k)) && !isBad;
+            });
+
+            const f = find(['freq'], ['err', 'std', 'dev', 'limit']);
+            const r = find(['r', 'amp', 'radius', 'demod_r'], ['err', 'std', 'dev']);
+            const p = find(['phase', 'phi', 'deg', 'demod_phi'], ['err', 'std', 'dev']);
+
+            if(f) UI.selects.f.value = f;
+            if(r) UI.selects.r.value = r;
+            if(p) UI.selects.p.value = p;
+
+            if(f && r && p) extractData(); 
+        }
+
+        function extractData() {
+            const lblF = UI.selects.f.value;
+            const lblR = UI.selects.r.value;
+            const lblP = UI.selects.p.value;
+
+            if(!lblF || !lblR || !lblP) return;
+
+            parsedData = [];
+            const delim = UI.delimiter.value === 'auto' ? ';' : UI.delimiter.value;
+            const lines = rawText.split(/\r?\n/); 
+
+            const getRowData = (rowIdx) => {
+                const cols = lines[rowIdx].split(delim).map(c=>c.trim());
+                const vals = [];
+                for(let i = labelColumnIndex + 1; i < cols.length; i++) {
+                    const n = parseFloat(cols[i].replace(',', '.'));
+                    if(!isNaN(n)) vals.push(n);
+                }
+                return vals;
+            };
+
+            let allF = [], allR = [], allP = [];
+
+            labelMap.get(lblF).rows.forEach(idx => allF.push(...getRowData(idx)));
+            labelMap.get(lblR).rows.forEach(idx => allR.push(...getRowData(idx)));
+            labelMap.get(lblP).rows.forEach(idx => allP.push(...getRowData(idx)));
+
+            // Trim to match R if needed
+            if(allF.length > allR.length) allF = allF.slice(0, allR.length);
+            if(allP.length > allR.length) allP = allP.slice(0, allR.length);
+
+            const len = Math.min(allF.length, allR.length, allP.length);
+            if(len === 0) {
+                log("Error: Selected rows contain no numeric data.", "err");
+                disableDownload();
+                return;
+            }
+
+            for(let i=0; i<len; i++) {
+                parsedData.push({ f: allF[i], r: allR[i], p: allP[i] });
+            }
+
+            parsedData.sort((a,b) => a.f - b.f);
+
+            log(`Extracted ${len} points.`, "success");
+            UI.rowCount.textContent = `${len} pts`;
+            
+            updatePreview();
+            renderChart();
+            enableDownload();
+        }
+
+        function renderChart() {
+            if(!parsedData.length) return;
+            UI.plotPlaceholder.classList.add('hidden');
+            if(chartInstance) chartInstance.destroy();
+            const isLog = UI.chkLogScale.checked;
+            
+            const labelX = UI.selects.f.value || "X";
+            const labelY1 = UI.selects.r.value || "Y1";
+            const labelY2 = UI.selects.p.value || "Y2";
+            
+            // Update table headers too
+            UI.thX.textContent = labelX;
+            UI.thY1.textContent = labelY1;
+            UI.thY2.textContent = labelY2;
+
+            chartInstance = new Chart(UI.ctx, {
+                type: 'line',
+                data: {
+                    labels: parsedData.map(d => d.f),
+                    datasets: [
+                        {
+                            label: labelY1,
+                            data: parsedData.map(d => d.r),
+                            borderColor: '#2563eb', backgroundColor: '#2563eb', // Blue
+                            yAxisID: 'y', borderWidth: 2, pointRadius: 1, tension: 0.1
+                        },
+                        {
+                            label: labelY2,
+                            data: parsedData.map(d => d.p),
+                            borderColor: '#dc2626', backgroundColor: '#dc2626', // Red
+                            yAxisID: 'y1', borderWidth: 2, pointRadius: 1, tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { type: 'linear', display: true, title: {display:true, text: labelX}, ticks: {callback: v=>v.toExponential(2)} },
+                        y: { type: isLog ? 'logarithmic' : 'linear', display: true, position: 'left', title: {display:true, text: labelY1, color:'#2563eb'} },
+                        y1: { type: 'linear', display: true, position: 'right', title: {display:true, text: labelY2, color:'#dc2626'}, grid: {drawOnChartArea: false} }
+                    },
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: {
+                             callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) label += ': ';
+                                    if (context.parsed.y !== null) label += context.parsed.y.toExponential(4);
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updatePreview() {
+            const fmt = n => (Math.abs(n) > 10000 || (Math.abs(n)<0.01 && n!==0)) ? n.toExponential(3) : n.toFixed(5);
+            UI.preview.innerHTML = parsedData.slice(0, 100).map(d => `
+                <tr class="hover:bg-blue-50 transition-colors">
+                    <td class="px-6 py-2 border-b border-slate-50 font-mono">${fmt(d.f)}</td>
+                    <td class="px-6 py-2 border-b border-slate-50 text-blue-600 font-medium font-mono">${fmt(d.r)}</td>
+                    <td class="px-6 py-2 border-b border-slate-50 text-red-600 font-mono">${fmt(d.p)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function enableDownload() {
+            UI.downloadBtn.disabled = false;
+            UI.downloadBtn.classList.remove('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
+            UI.downloadBtn.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-700', 'shadow-md');
+            UI.statusMsg.textContent = "Ready to export.";
+            UI.statusMsg.className = "text-xs text-blue-600 font-bold";
+        }
+
+        function disableDownload() {
+            UI.downloadBtn.disabled = true;
+            UI.downloadBtn.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
+            UI.downloadBtn.classList.remove('bg-blue-600', 'text-white', 'hover:bg-blue-700', 'shadow-md');
+            UI.statusMsg.textContent = "Waiting for data...";
+            UI.statusMsg.className = "text-xs text-slate-400";
+        }
+
+        function download() {
+            if(parsedData.length === 0) return;
+            const useComma = UI.chkComma.checked;
+            const sep = useComma ? ',' : '\t';
+            const ext = useComma ? '.csv' : '.tsv';
+            
+            // Use the selected names as headers
+            const labelX = UI.selects.f.value || "X";
+            const labelY1 = UI.selects.r.value || "Y1";
+            const labelY2 = UI.selects.p.value || "Y2";
+            
+            let content = `${labelX}${sep}${labelY1}${sep}${labelY2}\n`;
+            parsedData.forEach(d => { content += `${d.f}${sep}${d.r}${sep}${d.p}\n`; });
+            const blob = new Blob([content], {type: 'text/plain'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = rawFile.name.replace(/\.[^/.]+$/, "") + "_extracted" + ext;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+</body>
+</html>
