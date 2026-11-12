@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zhinst Data Extractor</title>
+    <title>Zhinst Data Extractor v1.0.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -27,7 +27,7 @@
             <div class="flex items-center gap-3">
                 <div>
                     <h1 class="text-xl font-bold text-slate-800">ZhInst Data Scrapper<span class="text-xs font-normal text-white bg-blue-600 px-2 py-0.5 rounded-full ml-2">XY Mode</span></h1>
-                    <p class="text-xs text-slate-400">NitaD, Univ Paris-Saclay, 21 nov 2025</p>
+                    <p class="text-xs text-slate-400">NitaD, Univ Paris-Saclay, v1.0.1, 12 November 2026</p>
                 </div>
             </div>
         </div>
@@ -72,7 +72,7 @@
                         <option value="auto">Auto-Detect</option>
                         <option value=";">Semicolon (;)</option>
                         <option value=",">Comma (,)</option>
-                        <option value="\t">Tab (\t)</option>
+                        <option value="tab">Tab (\t)</option>
                     </select>
                 </div>
 
@@ -112,7 +112,7 @@
                     <span>Export to TSV</span>
                 </button>
                 <div class="mt-2 flex justify-between px-1">
-                    <span id="statusMsg" class="text-xs text-slate-400">Waiting for data...</span>
+                    <span id="statusMsg" role="status" aria-live="polite" class="text-xs text-slate-400">Waiting for data...</span>
                     <label class="text-[10px] text-slate-400 flex items-center gap-1 cursor-pointer">
                         <input type="checkbox" id="chkComma" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500"> Use Comma (CSV)
                     </label>
@@ -183,6 +183,8 @@
         // === State ===
         let rawFile = null; 
         let rawText = "";   
+        let sourceLines = [];
+        let sourceDelimiter = ';';
         let parsedData = []; 
         let chartInstance = null;
         
@@ -271,9 +273,9 @@
         function reset() {
             rawFile = null;
             rawText = "";
-            parsedData = [];
+            sourceLines = [];
+            clearExtraction();
             labelMap.clear();
-            if(chartInstance) chartInstance.destroy();
             UI.plotPlaceholder.classList.remove('hidden');
             
             UI.dropZone.classList.remove('hidden');
@@ -303,29 +305,55 @@
                 rawText = e.target.result;
                 log(`Loaded ${file.size} bytes. Detecting structure...`);
                 
-                if(UI.delimiter.value === 'auto') {
-                    const firstLine = rawText.split('\n')[0];
-                    const semis = (firstLine.match(/;/g)||[]).length;
-                    const tabs = (firstLine.match(/\t/g)||[]).length;
-                    if (semis >= tabs && semis > 0) UI.delimiter.value = ';';
-                    else if (tabs > semis) UI.delimiter.value = '\t';
-                    else UI.delimiter.value = ',';
-                }
                 scanLabels(); 
             };
             reader.readAsText(file);
         }
 
+        function parseSample(cell) {
+            const text = cell.trim().replace(',', '.');
+            if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return null;
+            const value = Number(text);
+            return Number.isFinite(value) ? value : null;
+        }
+
+        function clearExtraction() {
+            parsedData = [];
+            if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+            UI.preview.innerHTML = '';
+            UI.rowCount.textContent = '0 pts';
+            UI.plotPlaceholder.classList.remove('hidden');
+            disableDownload();
+        }
+
+        function extractionError(message) {
+            log(message, 'err');
+            UI.statusMsg.textContent = message;
+            UI.statusMsg.className = 'text-xs text-red-600 font-bold';
+        }
+
         function scanLabels() {
+            clearExtraction();
             labelMap.clear();
-            const delim = UI.delimiter.value === 'auto' ? ';' : UI.delimiter.value;
-            const lines = rawText.split(/\r?\n/).filter(l => l.trim() !== '');
+            // Row indices always refer to this original, unfiltered line array.
+            sourceLines = rawText.split(/\r?\n/);
+            sourceDelimiter = UI.delimiter.value === 'tab' ? '\t' : UI.delimiter.value;
+            if (sourceDelimiter === 'auto') {
+                const firstLine = sourceLines.find(line => line.trim() !== '') || '';
+                sourceDelimiter = [';', '\t', ','].reduce((best, candidate) =>
+                    firstLine.split(candidate).length > firstLine.split(best).length ? candidate : best, ';');
+            }
+            const delim = sourceDelimiter;
+            const lines = sourceLines;
             
             log(`Scanning unique labels (delimiter: '${delim === '\t' ? 'TAB' : delim}')...`);
 
             // 1. Detect Label Column
             let bestCol = 3; 
-            for(let i=0; i<Math.min(lines.length, 20); i++) {
+            let scanned = 0;
+            for(let i=0; i<lines.length && scanned<20; i++) {
+                if (!lines[i].trim()) continue;
+                scanned++;
                 const cols = lines[i].split(delim).map(c=>c.trim().toLowerCase());
                 for(let c=0; c<cols.length; c++) {
                     if(cols[c].includes('freq') || cols[c] === 'r' || cols[c].includes('phase')) {
@@ -352,7 +380,7 @@
                         // Count numeric values in this row (after the label)
                         let valsInRow = 0;
                         for(let j = labelColumnIndex + 1; j < cols.length; j++) {
-                            if(cols[j].trim() !== "" && !isNaN(parseFloat(cols[j].replace(',', '.')))) {
+                            if(parseSample(cols[j]) !== null) {
                                 valsInRow++;
                             }
                         }
@@ -403,55 +431,57 @@
         }
 
         function extractData() {
+            clearExtraction();
             const lblF = UI.selects.f.value;
             const lblR = UI.selects.r.value;
             const lblP = UI.selects.p.value;
 
             if(!lblF || !lblR || !lblP) return;
 
-            parsedData = [];
-            const delim = UI.delimiter.value === 'auto' ? ';' : UI.delimiter.value;
-            const lines = rawText.split(/\r?\n/); 
-
-            const getRowData = (rowIdx) => {
-                const cols = lines[rowIdx].split(delim).map(c=>c.trim());
-                const vals = [];
-                for(let i = labelColumnIndex + 1; i < cols.length; i++) {
-                    const n = parseFloat(cols[i].replace(',', '.'));
-                    if(!isNaN(n)) vals.push(n);
-                }
-                return vals;
-            };
-
-            let allF = [], allR = [], allP = [];
-
-            labelMap.get(lblF).rows.forEach(idx => allF.push(...getRowData(idx)));
-            labelMap.get(lblR).rows.forEach(idx => allR.push(...getRowData(idx)));
-            labelMap.get(lblP).rows.forEach(idx => allP.push(...getRowData(idx)));
-
-            // Trim to match R if needed
-            if(allF.length > allR.length) allF = allF.slice(0, allR.length);
-            if(allP.length > allR.length) allP = allP.slice(0, allR.length);
-
-            const len = Math.min(allF.length, allR.length, allP.length);
-            if(len === 0) {
-                log("Error: Selected rows contain no numeric data.", "err");
-                disableDownload();
+            const channels = [lblF, lblR, lblP].map(label => labelMap.get(label));
+            if (channels.some(channel => !channel)) {
+                extractionError('Rescan the file and select labels present in it.');
+                return;
+            }
+            if (!channels.every(channel => channel.rows.length === channels[0].rows.length)) {
+                extractionError('Cannot align channels: selected labels have different row counts. No data exported.');
                 return;
             }
 
-            for(let i=0; i<len; i++) {
-                parsedData.push({ f: allF[i], r: allR[i], p: allP[i] });
+            const aligned = [];
+            let excluded = 0;
+            for (let row = 0; row < channels[0].rows.length; row++) {
+                // Match row occurrences, then match the original sample columns.
+                // Keep empty/invalid cells as null rather than shifting later values.
+                const samples = channels.map(channel => sourceLines[channel.rows[row]]
+                    .split(sourceDelimiter).slice(labelColumnIndex + 1).map(parseSample));
+                if (!samples.every(values => values.length === samples[0].length)) {
+                    extractionError(`Cannot align channels: sample counts differ in row group ${row + 1}. No data exported.`);
+                    return;
+                }
+                for (let i = 0; i < samples[0].length; i++) {
+                    const values = samples.map(channel => channel[i]);
+                    if (values.some(value => value === null)) { excluded++; continue; }
+                    aligned.push({ f: values[0], r: values[1], p: values[2] });
+                }
             }
-
+            if (!aligned.length) {
+                extractionError('No complete numeric samples across all three selected channels.');
+                return;
+            }
+            parsedData = aligned;
             parsedData.sort((a,b) => a.f - b.f);
 
-            log(`Extracted ${len} points.`, "success");
-            UI.rowCount.textContent = `${len} pts`;
+            log(`Extracted ${parsedData.length} aligned points; ${excluded} incomplete samples excluded.`, "success");
+            UI.rowCount.textContent = `${parsedData.length} pts`;
             
             updatePreview();
             renderChart();
             enableDownload();
+            if (excluded) {
+                UI.statusMsg.textContent = `Ready to export ${parsedData.length} points. ${excluded} incomplete samples excluded.`;
+                log(`Excluded ${excluded} sample positions because at least one channel was missing or invalid.`, 'err');
+            }
         }
 
         function renderChart() {
