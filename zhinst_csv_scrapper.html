@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zhinst Data Extractor v1.0.1</title>
+    <title>Zhinst Data Extractor v1.0.2</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -27,7 +27,7 @@
             <div class="flex items-center gap-3">
                 <div>
                     <h1 class="text-xl font-bold text-slate-800">ZhInst Data Scrapper<span class="text-xs font-normal text-white bg-blue-600 px-2 py-0.5 rounded-full ml-2">XY Mode</span></h1>
-                    <p class="text-xs text-slate-400">NitaD, Univ Paris-Saclay, v1.0.1, 12 November 2026</p>
+                    <p class="text-xs text-slate-400">NitaD, Univ Paris-Saclay, v1.0.2, 14 November 2026</p>
                 </div>
             </div>
         </div>
@@ -396,12 +396,22 @@
             smartSelect(uniqueLabels);
         }
 
+        function escapeHtml(s) {
+            return String(s ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         function populateSelects(labels) {
             const createOpts = () => {
                 let html = '<option value="">-- Select Label --</option>';
                 labels.forEach(lbl => {
                     const info = labelMap.get(lbl);
-                    html += `<option value="${lbl}">${lbl} (${info.sampleCount} values)</option>`;
+                    const safe = escapeHtml(lbl);
+                    html += `<option value="${safe}">${safe} (${info.sampleCount} values)</option>`;
                 });
                 return html;
             };
@@ -413,10 +423,18 @@
         }
 
         function smartSelect(labels) {
+            const matchesKeyword = (text, kw) => {
+                const low = text.toLowerCase();
+                const k = kw.toLowerCase();
+                if (k.length <= 2) {
+                    const re = new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^a-z0-9])`);
+                    return re.test(low);
+                }
+                return low.includes(k);
+            };
             const find = (keywords, bad) => labels.find(l => {
-                const low = l.toLowerCase();
-                const isBad = bad ? bad.some(b => low.includes(b)) : false;
-                return keywords.some(k => low.includes(k)) && !isBad;
+                const isBad = bad ? bad.some(b => matchesKeyword(l, b)) : false;
+                return keywords.some(k => matchesKeyword(l, k)) && !isBad;
             });
 
             const f = find(['freq'], ['err', 'std', 'dev', 'limit']);
